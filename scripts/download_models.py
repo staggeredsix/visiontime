@@ -26,7 +26,7 @@ BASE_MODEL_URLS: Dict[str, str] = {
     ),
     # Depth estimation (Distill-Any-Depth ONNX)
     "depth_fastdepth": (
-        "https://huggingface.co/FuryTMP/Distill-Any-Depth-Base-onnx/resolve/main/model.onnx"
+        "https://huggingface.co/FuryTMP/Distill-Any-Depth-Base-onnx/resolve/main/Distill%20Any%20Depth%20Base/model.onnx"
     ),
     # Optical flow (RAFT, Sintel, int8 block-quantized)
     "optical_flow": (

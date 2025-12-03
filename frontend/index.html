@@ -58,6 +58,9 @@
   const cams = new Map();
   const maxCameras = 4;
   let ws;
+  let localStream;
+  let localVideo;
+  const uploadSockets = new Map();
 
   function ensureCameraCard(name) {
     if (cams.has(name)) return cams.get(name);
@@ -110,14 +113,94 @@
     ws.onerror = (err) => console.error('WebSocket error', err);
   }
 
+  async function ensureLocalCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Web camera access is not supported in this browser');
+    }
+    if (!localStream) {
+      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+    if (!localVideo) {
+      localVideo = document.createElement('video');
+      localVideo.srcObject = localStream;
+      await localVideo.play();
+    }
+    return localVideo;
+  }
+
+  function stopBrowserUpload(name) {
+    const entry = uploadSockets.get(name);
+    if (!entry) return;
+    entry.stop = true;
+    entry.ws.close();
+    uploadSockets.delete(name);
+  }
+
+  function stopUnusedUploads(activeNames) {
+    [...uploadSockets.keys()].forEach((key) => {
+      if (!activeNames.includes(key)) {
+        stopBrowserUpload(key);
+      }
+    });
+  }
+
+  async function startBrowserUpload(name, fps = 15) {
+    stopBrowserUpload(name);
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const wsUpload = new WebSocket(`${proto}://${location.host}/ws/upload/${encodeURIComponent(name)}`);
+    wsUpload.binaryType = 'arraybuffer';
+    const state = { ws: wsUpload, stop: false };
+    uploadSockets.set(name, state);
+    wsUpload.onopen = async () => {
+      try {
+        const video = await ensureLocalCamera();
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+        const cctx = canvas.getContext('2d');
+        const interval = 1000 / Math.max(fps, 1);
+        const sendFrame = async () => {
+          if (state.stop || wsUpload.readyState !== WebSocket.OPEN) return;
+          cctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.7));
+          if (blob) {
+            const buffer = await blob.arrayBuffer();
+            wsUpload.send(buffer);
+          }
+          setTimeout(sendFrame, interval);
+        };
+        sendFrame();
+      } catch (err) {
+        console.error('Failed to stream browser camera', err);
+        statusEl.textContent = 'Could not access local webcam. Check browser permissions.';
+      }
+    };
+    wsUpload.onclose = () => {
+      uploadSockets.delete(name);
+    };
+  }
+
   function createCameraRow(idx, data = {}) {
     const wrapper = document.createElement('div');
+    const isBrowser = (data.url || '').toLowerCase() === 'browser';
     wrapper.innerHTML = `
       <label for="cam-name-${idx}">Camera ${idx + 1} name</label>
       <input id="cam-name-${idx}" name="cam-name-${idx}" placeholder="cam${idx + 1}" value="${data.name || ''}">
       <label for="cam-url-${idx}">Camera ${idx + 1} URL</label>
-      <input id="cam-url-${idx}" name="cam-url-${idx}" placeholder="rtsp://..." value="${data.url || ''}">
+      <input id="cam-url-${idx}" name="cam-url-${idx}" placeholder="rtsp://..." value="${data.url || ''}" ${isBrowser ? 'disabled' : ''}>
+      <label><input type="checkbox" id="cam-browser-${idx}" ${isBrowser ? 'checked' : ''}> Use this device's webcam</label>
     `;
+    const browserToggle = wrapper.querySelector(`#cam-browser-${idx}`);
+    const urlInput = wrapper.querySelector(`#cam-url-${idx}`);
+    browserToggle.addEventListener('change', () => {
+      if (browserToggle.checked) {
+        urlInput.value = 'browser';
+        urlInput.disabled = true;
+      } else {
+        urlInput.disabled = false;
+        if (urlInput.value === 'browser') urlInput.value = '';
+      }
+    });
     return wrapper;
   }
 
@@ -130,8 +213,10 @@
       for (let i = 0; i < maxCameras; i++) {
         cameraInputs.appendChild(createCameraRow(i, camsList[i] || {}));
       }
+      return camsList;
     } catch (err) {
       console.error('Failed to load cameras', err);
+      return [];
     }
   }
 
@@ -142,12 +227,13 @@
     for (let i = 0; i < maxCameras; i++) {
       const name = document.getElementById(`cam-name-${i}`).value.trim();
       const url = document.getElementById(`cam-url-${i}`).value.trim();
+      const browserChecked = document.getElementById(`cam-browser-${i}`)?.checked;
       if (!name && !url) continue;
       if (!name || !url) {
         statusEl.textContent = 'Each camera needs both name and URL.';
         return;
       }
-      payload.cameras.push({ name, url });
+      payload.cameras.push({ name, url: browserChecked ? 'browser' : url });
     }
     if (payload.cameras.length === 0) {
       statusEl.textContent = 'Provide at least one camera.';
@@ -172,6 +258,9 @@
       cams.clear();
       cameraGrid.innerHTML = '';
       connectWs();
+      const browserCams = payload.cameras.filter((c) => c.url.toLowerCase() === 'browser').map((c) => c.name);
+      stopUnusedUploads(browserCams);
+      browserCams.forEach((name) => startBrowserUpload(name));
     } catch (err) {
       console.error(err);
       statusEl.textContent = 'Error updating cameras.';
@@ -179,7 +268,13 @@
   }
 
   cameraForm.addEventListener('submit', submitCameras);
-  loadCameras().then(connectWs);
+  loadCameras().then((camsList) => {
+    const browserCams = camsList.filter((c) => (c.url || '').toLowerCase() === 'browser').map((c) => c.name);
+    if (browserCams.length) {
+      browserCams.forEach((name) => startBrowserUpload(name));
+    }
+    connectWs();
+  });
 </script>
 </body>
 </html>

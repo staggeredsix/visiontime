@@ -74,6 +74,45 @@ class CameraStream:
         self.capture.release()
 
 
+class BrowserCameraStream:
+    def __init__(self, config: CameraConfig) -> None:
+        self.config = config
+        self.queue: asyncio.Queue[np.ndarray] = asyncio.Queue(maxsize=1)
+        self.interval = 1.0 / max(config.fps, 1)
+        self.last_frame: Optional[np.ndarray] = None
+        self.prev_frame: Optional[np.ndarray] = None
+        self.running = True
+
+    async def push(self, frame: np.ndarray) -> None:
+        if not self.running:
+            return
+        if self.queue.full():
+            try:
+                self.queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        await self.queue.put(frame)
+
+    async def frames(self):
+        while self.running:
+            frame = await self.queue.get()
+            if frame is None:
+                continue
+            resized = cv2.resize(frame, (self.config.width, self.config.height))
+            self.prev_frame = self.last_frame
+            self.last_frame = resized
+            yield resized, self.prev_frame
+            await asyncio.sleep(self.interval)
+
+    def stop(self) -> None:
+        self.running = False
+        while not self.queue.empty():
+            try:
+                self.queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+
+
 class TritonMultiClient:
     def __init__(self, url: str, model_cfg: ModelConfig) -> None:
         self.client = grpcclient.InferenceServerClient(url=url, verbose=False)
@@ -247,7 +286,7 @@ class PipelineManager:
         validate_cameras(cameras)
         self.cameras = cameras
         self.model_cfg = model_cfg
-        self.streams = {cfg.name: CameraStream(cfg) for cfg in cameras}
+        self.streams = {cfg.name: self.create_stream(cfg) for cfg in cameras}
         self.triton = TritonMultiClient(os.getenv("TRITON_GRPC_URL", "localhost:8001"), model_cfg)
         self.renderer = OverlayRenderer()
         self.projector = EmbeddingProjector()
@@ -256,6 +295,12 @@ class PipelineManager:
         self.embedding_export: Dict[str, Any] = {}
         self.camera_tasks: Dict[str, asyncio.Task] = {}
         self.background_task: Optional[asyncio.Task] = None
+
+    @staticmethod
+    def create_stream(cfg: CameraConfig):
+        if cfg.url.strip().lower() == "browser":
+            return BrowserCameraStream(cfg)
+        return CameraStream(cfg)
 
     async def run_camera(self, name: str, stream: CameraStream) -> None:
         try:
@@ -299,6 +344,11 @@ class PipelineManager:
                 continue
             self.camera_tasks[name] = asyncio.create_task(self.run_camera(name, stream))
 
+    async def push_browser_frame(self, name: str, frame: np.ndarray) -> None:
+        stream = self.streams.get(name)
+        if isinstance(stream, BrowserCameraStream):
+            await stream.push(frame)
+
     async def start(self) -> None:
         self.launch_camera_tasks()
         if self.background_task is None or self.background_task.done():
@@ -317,7 +367,7 @@ class PipelineManager:
         validate_cameras(cameras)
         await self.stop_streams()
         self.cameras = cameras
-        self.streams = {cfg.name: CameraStream(cfg) for cfg in cameras}
+        self.streams = {cfg.name: self.create_stream(cfg) for cfg in cameras}
         self.metrics.clear()
         self.latest_frames.clear()
         self.projector = EmbeddingProjector()
@@ -405,6 +455,28 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 ).model_dump_json())
     except WebSocketDisconnect:
         LOGGER.info("WebSocket disconnected")
+
+
+@app.websocket("/ws/upload/{camera_name}")
+async def websocket_upload(websocket: WebSocket, camera_name: str) -> None:
+    await websocket.accept()
+    assert manager is not None
+    stream = manager.streams.get(camera_name)
+    if not isinstance(stream, BrowserCameraStream):
+        await websocket.close(code=4000, reason="Camera not configured for browser uploads")
+        return
+    try:
+        while True:
+            data = await websocket.receive_bytes()
+            if not data:
+                continue
+            np_frame = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+            if np_frame is None:
+                LOGGER.warning("Received invalid frame for %s", camera_name)
+                continue
+            await manager.push_browser_frame(camera_name, np_frame)
+    except WebSocketDisconnect:
+        LOGGER.info("Upload WebSocket for %s disconnected", camera_name)
 
 
 def main() -> None:

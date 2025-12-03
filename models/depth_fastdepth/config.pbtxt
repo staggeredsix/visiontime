@@ -1,0 +1,14 @@
+name: "depth_fastdepth"
+platform: "onnxruntime_onnx"
+max_batch_size: 8
+input {
+  name: "images"
+  data_type: TYPE_FP32
+  dims: [3, 224, 224]
+}
+output {
+  name: "depth"
+  data_type: TYPE_FP32
+  dims: [1, 224, 224]
+}
+instance_group [{ kind: KIND_GPU }]

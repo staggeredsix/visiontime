@@ -86,14 +86,26 @@ class TritonMultiClient:
         return np.expand_dims(chw, axis=0)
 
     def infer(self, current: np.ndarray, previous: Optional[np.ndarray]) -> Dict[str, Any]:
-        curr_pre = self.preprocess(current, (640, 640))
-        prev_pre = self.preprocess(previous if previous is not None else current, (640, 640))
+        curr_det = self.preprocess(current, (640, 640))
+        curr_seg = self.preprocess(current, (512, 512))
+        curr_depth = self.preprocess(current, (224, 224))
+        curr_clip = self.preprocess(current, (224, 224))
+        curr_flow = self.preprocess(current, (320, 320))
+        prev_flow = self.preprocess(previous if previous is not None else current, (320, 320))
         inputs = [
-            grpcclient.InferInput("image_curr", curr_pre.shape, "FP32"),
-            grpcclient.InferInput("image_prev", prev_pre.shape, "FP32"),
+            grpcclient.InferInput("image_det", curr_det.shape, "FP32"),
+            grpcclient.InferInput("image_seg", curr_seg.shape, "FP32"),
+            grpcclient.InferInput("image_depth", curr_depth.shape, "FP32"),
+            grpcclient.InferInput("image_flow_prev", prev_flow.shape, "FP32"),
+            grpcclient.InferInput("image_flow_curr", curr_flow.shape, "FP32"),
+            grpcclient.InferInput("image_clip", curr_clip.shape, "FP32"),
         ]
-        inputs[0].set_data_from_numpy(curr_pre)
-        inputs[1].set_data_from_numpy(prev_pre)
+        inputs[0].set_data_from_numpy(curr_det)
+        inputs[1].set_data_from_numpy(curr_seg)
+        inputs[2].set_data_from_numpy(curr_depth)
+        inputs[3].set_data_from_numpy(prev_flow)
+        inputs[4].set_data_from_numpy(curr_flow)
+        inputs[5].set_data_from_numpy(curr_clip)
         outputs = [grpcclient.InferRequestedOutput(name) for name in [
             "det_boxes",
             "det_scores",
@@ -160,9 +172,9 @@ class OverlayRenderer:
 
     def draw(self, frame: np.ndarray, detections: Dict[str, np.ndarray], masks: Optional[np.ndarray], depth: Optional[np.ndarray], flow: Optional[np.ndarray]) -> np.ndarray:
         output = frame.copy()
-        boxes = detections.get("boxes") or []
-        scores = detections.get("scores") or []
-        labels = detections.get("labels") or []
+        boxes = detections.get("boxes") if detections.get("boxes") is not None else []
+        scores = detections.get("scores") if detections.get("scores") is not None else []
+        labels = detections.get("labels") if detections.get("labels") is not None else []
         for i, box in enumerate(boxes[:5]):
             color = self.palette[i % len(self.palette)]
             x1, y1, x2, y2 = [int(v) for v in box]

@@ -1,0 +1,43 @@
+version: "3.9"
+services:
+  triton:
+    image: nvcr.io/nvidia/tritonserver:24.05-py3
+    restart: unless-stopped
+    command: ["tritonserver", "--model-repository=/models", "--log-verbose=1"]
+    volumes:
+      - ./models:/models:ro
+    ports:
+      - "8000:8000" # HTTP
+      - "8001:8001" # gRPC
+      - "8002:8002" # Metrics
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    environment:
+      - TRITON_GRPC_URL=triton:8001
+      - CONFIG_PATH=/config/cameras.yaml
+    depends_on:
+      - triton
+    volumes:
+      - ./config:/config
+      - ./models:/models:ro
+    ports:
+      - "8080:8080"
+    runtime: nvidia
+
+  frontend:
+    image: nginx:1.27-alpine
+    depends_on:
+      - orchestrator
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    ports:
+      - "8090:80"

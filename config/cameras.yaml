@@ -1,0 +1,18 @@
+cameras:
+  - name: cam1
+    url: rtsp://example.com/stream1
+    fps: 15
+    width: 1280
+    height: 720
+  - name: cam2
+    url: rtsp://example.com/stream2
+    fps: 15
+    width: 1280
+    height: 720
+models:
+  ensemble_name: multitask_ensemble
+  detection_name: rtmdet_s
+  segmentation_name: segformer
+  depth_name: depth_fastdepth
+  flow_name: optical_flow
+  embedding_name: clip_encoder

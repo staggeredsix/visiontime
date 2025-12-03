@@ -5,6 +5,7 @@ import os
 import time
 from collections import deque
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
 import cv2
@@ -280,6 +281,34 @@ def read_gpu_metrics() -> Tuple[float, float, float]:
     return util, used, total
 
 
+def validate_model_repo(model_cfg: ModelConfig, models_root: Path) -> None:
+    required_models = {
+        model_cfg.detection_name: True,
+        model_cfg.segmentation_name: True,
+        model_cfg.depth_name: True,
+        model_cfg.flow_name: True,
+        model_cfg.embedding_name: True,
+        model_cfg.ensemble_name: False,
+    }
+    missing: List[str] = []
+    for name, needs_weights in required_models.items():
+        version_dir = models_root / name / "1"
+        if needs_weights:
+            model_file = version_dir / "model.onnx"
+            if not model_file.exists():
+                missing.append(str(model_file))
+        else:
+            if not version_dir.exists():
+                missing.append(str(version_dir))
+    if missing:
+        formatted = "\n - ".join(missing)
+        raise RuntimeError(
+            "Model repository is incomplete. Ensure these paths exist before starting Triton:\n"
+            f" - {formatted}\n"
+            "Run scripts/download_models.py (or quickstart.sh) to populate ./models and mount it into the containers."
+        )
+
+
 class PipelineManager:
     def __init__(self, config_path: str) -> None:
         cameras, model_cfg = load_config(config_path)
@@ -411,6 +440,9 @@ async def startup_event() -> None:
     config_path = os.getenv("CONFIG_PATH", "/config/cameras.yaml")
     LOGGER.info("Loading config from %s", config_path)
     manager = PipelineManager(config_path)
+    models_root = Path(os.getenv("MODEL_REPO_PATH", "/models"))
+    LOGGER.info("Validating model repository at %s", models_root)
+    validate_model_repo(manager.model_cfg, models_root)
     await manager.start()
 
 

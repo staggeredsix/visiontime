@@ -19,6 +19,8 @@ This script:
 2. Builds the orchestrator image and starts all services defined in `docker-compose.yml` using `docker compose`.
 3. Tails the combined container logs.
 
+The populated `./models` folder is bind-mounted into both Triton and the orchestrator at `/models`; the orchestrator verifies the required model files are present during startup to catch missing downloads early.
+
 When the stack is running, services are exposed on the following ports:
 - Triton HTTP/gRPC/metrics: 8000/8001/8002
 - Orchestrator API: 8080

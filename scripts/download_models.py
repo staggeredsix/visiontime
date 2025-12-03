@@ -26,7 +26,7 @@ BASE_MODEL_URLS: Dict[str, str] = {
     ),
     # Depth estimation (Distill-Any-Depth ONNX)
     "depth_fastdepth": (
-        "https://huggingface.co/FuryTMP/Distill-Any-Depth-Base-onnx/resolve/main/model.onnx"
+        "https://huggingface.co/FuryTMP/Distill-Any-Depth-Base-onnx/resolve/main/Distill%20Any%20Depth%20Base/model.onnx"
     ),
     # Optical flow (RAFT, Sintel, int8 block-quantized)
     "optical_flow": (
@@ -39,7 +39,10 @@ BASE_MODEL_URLS: Dict[str, str] = {
     ),
     # SegFormer-B0 semantic segmentation
     "segformer": (
-        "https://huggingface.co/nvidia/segformer-b0-finetuned-ade-512-512/resolve/main/model.onnx"
+        # NVIDIA's repository does not host an ONNX export; use Xenova's
+        # pre-converted weights instead (keeps the same architecture/weights
+        # but stored under the onnx/ subfolder).
+        "https://huggingface.co/Xenova/segformer-b0-finetuned-ade-512-512/resolve/main/onnx/model.onnx"
     ),
 }
 

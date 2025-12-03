@@ -6,6 +6,9 @@ if ! command -v docker-compose >/dev/null; then
   exit 1
 fi
 
+echo "Fetching models (set VISIONTIME_MODELS_URL or pass --source to download_models.py)..."
+python scripts/download_models.py "$@"
+
 echo "Building containers..."
 make build
 

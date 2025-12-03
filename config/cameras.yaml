@@ -9,6 +9,16 @@ cameras:
     fps: 15
     width: 1280
     height: 720
+  - name: cam3
+    url: rtsp://example.com/stream3
+    fps: 15
+    width: 1280
+    height: 720
+  - name: cam4
+    url: rtsp://example.com/stream4
+    fps: 15
+    width: 1280
+    height: 720
 models:
   ensemble_name: multitask_ensemble
   detection_name: rtmdet_s

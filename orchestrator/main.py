@@ -12,8 +12,8 @@ import numpy as np
 import pynvml
 import tritonclient.grpc as grpcclient
 import yaml
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field, field_validator
 from sklearn.manifold import TSNE
 from uvicorn import Config, Server
 
@@ -221,6 +221,16 @@ def load_config(path: str) -> Tuple[List[CameraConfig], ModelConfig]:
     return cameras, models
 
 
+def validate_cameras(cameras: List[CameraConfig]) -> None:
+    if not cameras:
+        raise ValueError("At least one camera must be provided")
+    if len(cameras) > 4:
+        raise ValueError("A maximum of four cameras are supported")
+    names = [c.name for c in cameras]
+    if len(names) != len(set(names)):
+        raise ValueError("Camera names must be unique")
+
+
 def read_gpu_metrics() -> Tuple[float, float, float]:
     pynvml.nvmlInit()
     handle = pynvml.nvmlDeviceGetHandleByIndex(0)
@@ -234,6 +244,7 @@ def read_gpu_metrics() -> Tuple[float, float, float]:
 class PipelineManager:
     def __init__(self, config_path: str) -> None:
         cameras, model_cfg = load_config(config_path)
+        validate_cameras(cameras)
         self.cameras = cameras
         self.model_cfg = model_cfg
         self.streams = {cfg.name: CameraStream(cfg) for cfg in cameras}
@@ -243,33 +254,38 @@ class PipelineManager:
         self.metrics: Dict[str, Metrics] = {}
         self.latest_frames: Dict[str, str] = {}
         self.embedding_export: Dict[str, Any] = {}
+        self.camera_tasks: Dict[str, asyncio.Task] = {}
+        self.background_task: Optional[asyncio.Task] = None
 
     async def run_camera(self, name: str, stream: CameraStream) -> None:
-        async for frame, prev in stream.frames():
-            start = time.time()
-            inference = self.triton.infer(frame, prev)
-            post_start = time.time()
-            rendered = self.renderer.draw(
-                frame,
-                {"boxes": inference["boxes"], "scores": inference["scores"], "labels": inference["labels"]},
-                inference.get("masks"),
-                inference.get("depth"),
-                inference.get("flow"),
-            )
-            self.projector.add(inference["embedding"], label=f"{name}")
-            post_ms = (time.time() - post_start) * 1000
-            fps = 1.0 / max(time.time() - start, 1e-3)
-            gpu_util, vram_used, vram_total = read_gpu_metrics()
-            self.metrics[name] = Metrics(
-                fps=fps,
-                triton_latency_ms=inference["latency_ms"],
-                end_to_end_ms=(time.time() - start) * 1000,
-                postprocess_ms=post_ms,
-                gpu_util=gpu_util,
-                vram_used_gb=vram_used,
-                vram_total_gb=vram_total,
-            )
-            self.latest_frames[name] = encode_frame(rendered)
+        try:
+            async for frame, prev in stream.frames():
+                start = time.time()
+                inference = self.triton.infer(frame, prev)
+                post_start = time.time()
+                rendered = self.renderer.draw(
+                    frame,
+                    {"boxes": inference["boxes"], "scores": inference["scores"], "labels": inference["labels"]},
+                    inference.get("masks"),
+                    inference.get("depth"),
+                    inference.get("flow"),
+                )
+                self.projector.add(inference["embedding"], label=f"{name}")
+                post_ms = (time.time() - post_start) * 1000
+                fps = 1.0 / max(time.time() - start, 1e-3)
+                gpu_util, vram_used, vram_total = read_gpu_metrics()
+                self.metrics[name] = Metrics(
+                    fps=fps,
+                    triton_latency_ms=inference["latency_ms"],
+                    end_to_end_ms=(time.time() - start) * 1000,
+                    postprocess_ms=post_ms,
+                    gpu_util=gpu_util,
+                    vram_used_gb=vram_used,
+                    vram_total_gb=vram_total,
+                )
+                self.latest_frames[name] = encode_frame(rendered)
+        finally:
+            stream.stop()
 
     async def background_project(self) -> None:
         while True:
@@ -277,10 +293,35 @@ class PipelineManager:
             self.projector.compute()
             self.embedding_export = self.projector.export()
 
+    def launch_camera_tasks(self) -> None:
+        for name, stream in self.streams.items():
+            if name in self.camera_tasks and not self.camera_tasks[name].done():
+                continue
+            self.camera_tasks[name] = asyncio.create_task(self.run_camera(name, stream))
+
     async def start(self) -> None:
-        tasks = [asyncio.create_task(self.run_camera(name, stream)) for name, stream in self.streams.items()]
-        tasks.append(asyncio.create_task(self.background_project()))
-        await asyncio.gather(*tasks)
+        self.launch_camera_tasks()
+        if self.background_task is None or self.background_task.done():
+            self.background_task = asyncio.create_task(self.background_project())
+
+    async def stop_streams(self) -> None:
+        for stream in self.streams.values():
+            stream.stop()
+        for task in self.camera_tasks.values():
+            task.cancel()
+        if self.camera_tasks:
+            await asyncio.gather(*self.camera_tasks.values(), return_exceptions=True)
+        self.camera_tasks = {}
+
+    async def replace_cameras(self, cameras: List[CameraConfig]) -> None:
+        validate_cameras(cameras)
+        await self.stop_streams()
+        self.cameras = cameras
+        self.streams = {cfg.name: CameraStream(cfg) for cfg in cameras}
+        self.metrics.clear()
+        self.latest_frames.clear()
+        self.projector = EmbeddingProjector()
+        self.launch_camera_tasks()
 
 
 class WSMessage(BaseModel):
@@ -289,6 +330,25 @@ class WSMessage(BaseModel):
     frame: Optional[str] = None
     metrics: Optional[Metrics] = None
     embeddings: Optional[Dict[str, Any]] = None
+
+
+class CameraRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+    url: str = Field(..., min_length=1)
+    fps: int = 15
+    width: int = 1280
+    height: int = 720
+
+    @field_validator("fps")
+    @classmethod
+    def positive_fps(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("fps must be positive")
+        return value
+
+
+class CameraSet(BaseModel):
+    cameras: List[CameraRequest]
 
 
 app = FastAPI(title="Vision Orchestrator")
@@ -301,7 +361,24 @@ async def startup_event() -> None:
     config_path = os.getenv("CONFIG_PATH", "/config/cameras.yaml")
     LOGGER.info("Loading config from %s", config_path)
     manager = PipelineManager(config_path)
-    asyncio.create_task(manager.start())
+    await manager.start()
+
+
+@app.get("/api/cameras")
+async def list_cameras() -> Dict[str, Any]:
+    assert manager is not None
+    return {"cameras": [c.__dict__ for c in manager.cameras]}
+
+
+@app.post("/api/cameras")
+async def update_cameras(payload: CameraSet) -> Dict[str, str]:
+    assert manager is not None
+    try:
+        cameras = [CameraConfig(**cam.model_dump()) for cam in payload.cameras]
+        await manager.replace_cameras(cameras)
+        return {"status": "ok"}
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
 
 
 @app.websocket("/ws")

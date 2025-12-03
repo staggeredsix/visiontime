@@ -1,0 +1,5 @@
+models/*
+!models/README.md
+placeholder/*
+__pycache__/
+*.pyc

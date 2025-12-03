@@ -31,10 +31,12 @@ browser will request camera permission and begin streaming frames directly into 
 RTSP/HTTP streams by filling in URLs on the other rows.
 
 ## Populating models manually
-If you prefer not to use `quickstart.sh`, you can invoke the downloader directly:
+If you prefer not to use `quickstart.sh`, you can invoke the downloader directly or rely on the new Makefile target that runs it automatically:
 
 ```bash
 python scripts/download_models.py
+# or
+make models
 ```
 
 To use a custom tar.gz bundle instead of downloading from Hugging Face, set `VISIONTIME_MODELS_URL` or pass `--source /path/to/models.tar.gz`. Use `--force` to overwrite existing model versions.
@@ -46,7 +48,8 @@ The `models` directory in the repository contains only configuration stubs by de
 - **GPU access errors**: Ensure the NVIDIA Container Toolkit is installed and Docker is configured to expose GPUs to containers. The compose file requests `gpus: all` for Triton and the orchestrator.
 
 ## Useful commands
+- `make models`: Fetch the ONNX weights (skips downloads when the files already exist).
+- `make up`: Start the stack in the background after ensuring models are present.
 - `make build`: Build the orchestrator image.
-- `make up`: Start the stack in the background.
 - `make logs`: Tail logs from all services.
 - `make down`: Stop and remove the containers.

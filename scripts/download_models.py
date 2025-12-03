@@ -39,7 +39,10 @@ BASE_MODEL_URLS: Dict[str, str] = {
     ),
     # SegFormer-B0 semantic segmentation
     "segformer": (
-        "https://huggingface.co/nvidia/segformer-b0-finetuned-ade-512-512/resolve/main/model.onnx"
+        # NVIDIA's repository does not host an ONNX export; use Xenova's
+        # pre-converted weights instead (keeps the same architecture/weights
+        # but stored under the onnx/ subfolder).
+        "https://huggingface.co/Xenova/segformer-b0-finetuned-ade-512-512/resolve/main/onnx/model.onnx"
     ),
 }
 

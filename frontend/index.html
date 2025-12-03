@@ -128,6 +128,19 @@
     return localVideo;
   }
 
+  async function requestBrowserCameraPermission() {
+    statusEl.textContent = 'Requesting permission to use this device\'s webcam...';
+    try {
+      await ensureLocalCamera();
+      statusEl.textContent = 'Webcam ready for streaming.';
+      return true;
+    } catch (err) {
+      console.error('Could not request webcam access', err);
+      statusEl.textContent = 'Could not access the local webcam. Check browser permissions and reload.';
+      return false;
+    }
+  }
+
   function stopBrowserUpload(name) {
     const entry = uploadSockets.get(name);
     if (!entry) return;
@@ -196,11 +209,15 @@
       if (browserToggle.checked) {
         urlInput.value = 'browser';
         urlInput.disabled = true;
+        requestBrowserCameraPermission();
       } else {
         urlInput.disabled = false;
         if (urlInput.value === 'browser') urlInput.value = '';
       }
     });
+    if (isBrowser) {
+      requestBrowserCameraPermission();
+    }
     return wrapper;
   }
 

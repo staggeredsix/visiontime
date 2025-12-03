@@ -1,6 +1,6 @@
 cameras:
-  - name: cam1
-    url: rtsp://example.com/stream1
+  - name: browser_cam
+    url: browser
     fps: 15
     width: 1280
     height: 720

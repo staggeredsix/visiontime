@@ -16,4 +16,4 @@ output {
   data_type: TYPE_FP32
   dims: [2, 320, 320]
 }
-instance_group [{ kind: KIND_GPU }]
+instance_group [{ kind: KIND_CPU }]

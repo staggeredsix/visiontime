@@ -42,7 +42,7 @@ ensemble_scheduling {
   step {
     model_name: "rtmdet_s"
     model_version: -1
-    input_map { key: "images" value: "image_det" }
+    input_map { key: "input" value: "image_det" }
     output_map { key: "boxes" value: "det_boxes" }
     output_map { key: "scores" value: "det_scores" }
     output_map { key: "labels" value: "det_labels" }
@@ -50,13 +50,13 @@ ensemble_scheduling {
   step {
     model_name: "segformer"
     model_version: -1
-    input_map { key: "images" value: "image_seg" }
+    input_map { key: "pixel_values" value: "image_seg" }
     output_map { key: "masks" value: "seg_masks" }
   }
   step {
     model_name: "depth_fastdepth"
     model_version: -1
-    input_map { key: "images" value: "image_depth" }
+    input_map { key: "input" value: "image_depth" }
     output_map { key: "depth" value: "depth" }
   }
   step {
@@ -69,7 +69,7 @@ ensemble_scheduling {
   step {
     model_name: "clip_encoder"
     model_version: -1
-    input_map { key: "images" value: "image_clip" }
+    input_map { key: "pixel_values" value: "image_clip" }
     output_map { key: "embedding" value: "embedding" }
   }
 }

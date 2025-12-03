@@ -1,9 +1,13 @@
-.PHONY: build up down logs
+
+.PHONY: build up down logs models
 
 build:
 	docker compose build
 
-up:
+models:
+	python scripts/download_models.py
+
+up: models
 	docker compose up -d
 
 logs:

@@ -9,6 +9,6 @@ input {
 output {
   name: "output"
   data_type: TYPE_FP32
-  dims: [1, 224, 224]
+  dims: [1, -1, -1]
 }
 instance_group [{ kind: KIND_GPU }]

@@ -2,12 +2,12 @@ name: "optical_flow"
 platform: "onnxruntime_onnx"
 max_batch_size: 4
 input {
-  name: "images_prev"
+  name: "0"
   data_type: TYPE_FP32
   dims: [3, 320, 320]
 }
 input {
-  name: "images_curr"
+  name: "1"
   data_type: TYPE_FP32
   dims: [3, 320, 320]
 }

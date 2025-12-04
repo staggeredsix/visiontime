@@ -47,7 +47,8 @@ BASE_MODEL_URLS: Dict[str, str] = {
 }
 
 # Ensemble is a Triton ensemble model (no ONNX file, just a config.pbtxt you keep in the repo).
-ENSEMBLE_MODELS = ["ensemble_multi"]
+# Triton ensemble name (no ONNX weights required).
+ENSEMBLE_MODELS = ["multitask_ensemble"]
 
 MODEL_NAMES = list(BASE_MODEL_URLS.keys()) + ENSEMBLE_MODELS
 

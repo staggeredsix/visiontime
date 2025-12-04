@@ -9,6 +9,6 @@ input {
 output {
   name: "image_embeds"
   data_type: TYPE_FP32
-  dims: [1024]
+  dims: [512]
 }
 instance_group [{ kind: KIND_GPU }]

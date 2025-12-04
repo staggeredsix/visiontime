@@ -130,8 +130,8 @@ class TritonMultiClient:
         curr_seg = self.preprocess(current, (512, 512))
         curr_depth = self.preprocess(current, (224, 224))
         curr_clip = self.preprocess(current, (224, 224))
-        curr_flow = self.preprocess(current, (320, 320))
-        prev_flow = self.preprocess(previous if previous is not None else current, (320, 320))
+        curr_flow = self.preprocess(current, (480, 360))
+        prev_flow = self.preprocess(previous if previous is not None else current, (480, 360))
         inputs = [
             grpcclient.InferInput("image_det", curr_det.shape, "FP32"),
             grpcclient.InferInput("image_seg", curr_seg.shape, "FP32"),
@@ -147,8 +147,7 @@ class TritonMultiClient:
         inputs[4].set_data_from_numpy(curr_flow)
         inputs[5].set_data_from_numpy(curr_clip)
         outputs = [grpcclient.InferRequestedOutput(name) for name in [
-            "det_boxes",
-            "det_scores",
+            "det_dets",
             "det_labels",
             "seg_masks",
             "depth",
@@ -159,8 +158,7 @@ class TritonMultiClient:
         result = self.client.infer(self.model_cfg.ensemble_name, inputs=inputs, outputs=outputs)
         latency_ms = (time.time() - start) * 1000
         parsed = {
-            "boxes": result.as_numpy("det_boxes"),
-            "scores": result.as_numpy("det_scores"),
+            "dets": result.as_numpy("det_dets"),
             "labels": result.as_numpy("det_labels"),
             "masks": result.as_numpy("seg_masks"),
             "depth": result.as_numpy("depth"),
@@ -168,6 +166,20 @@ class TritonMultiClient:
             "embedding": result.as_numpy("embedding"),
             "latency_ms": latency_ms,
         }
+        dets = parsed.get("dets")
+        if dets is not None and dets.size > 0:
+            boxes = dets[..., :4]
+            scores = dets[..., 4]
+            parsed_labels = dets[..., 5] if dets.shape[-1] > 5 else parsed.get("labels")
+        else:
+            boxes = np.empty((0, 4), dtype=np.float32)
+            scores = np.empty((0,), dtype=np.float32)
+            parsed_labels = np.empty((0,), dtype=np.int64)
+        parsed.update({
+            "boxes": boxes,
+            "scores": scores,
+            "labels": parsed_labels,
+        })
         return parsed
 
 

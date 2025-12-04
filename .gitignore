@@ -1,5 +1,6 @@
 models/*
 !models/README.md
+!models/README_AUTOCONFIG.md
 !models/*/
 !models/*/config.pbtxt
 placeholder/*

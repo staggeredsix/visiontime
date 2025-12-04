@@ -7,7 +7,7 @@ input {
   dims: [3, 224, 224]
 }
 output {
-  name: "embedding"
+  name: "image_embeds"
   data_type: TYPE_FP32
   dims: [1024]
 }

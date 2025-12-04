@@ -1,35 +1,35 @@
 name: "multitask_ensemble"
 platform: "ensemble"
-max_batch_size: 4
+max_batch_size: 0
 input {
   name: "image_det"
   data_type: TYPE_FP32
-  dims: [3, 640, 640]
+  dims: [1, 3, 640, 640]
 }
 input {
   name: "image_seg"
   data_type: TYPE_FP32
-  dims: [3, 512, 512]
+  dims: [1, 3, 512, 512]
 }
 input {
   name: "image_depth"
   data_type: TYPE_FP32
-  dims: [3, 224, 224]
+  dims: [1, 3, 224, 224]
 }
 input {
   name: "image_flow_prev"
   data_type: TYPE_FP32
-  dims: [3, 320, 320]
+  dims: [1, 3, 320, 320]
 }
 input {
   name: "image_flow_curr"
   data_type: TYPE_FP32
-  dims: [3, 320, 320]
+  dims: [1, 3, 320, 320]
 }
 input {
   name: "image_clip"
   data_type: TYPE_FP32
-  dims: [3, 224, 224]
+  dims: [1, 3, 224, 224]
 }
 output { name: "det_boxes"  data_type: TYPE_FP32 dims: [100, 4] }
 output { name: "det_scores" data_type: TYPE_FP32 dims: [100] }
@@ -51,26 +51,26 @@ ensemble_scheduling {
     model_name: "segformer"
     model_version: -1
     input_map { key: "pixel_values" value: "image_seg" }
-    output_map { key: "masks" value: "seg_masks" }
+    output_map { key: "logits" value: "seg_masks" }
   }
   step {
     model_name: "depth_fastdepth"
     model_version: -1
     input_map { key: "input" value: "image_depth" }
-    output_map { key: "depth" value: "depth" }
+    output_map { key: "output" value: "depth" }
   }
   step {
     model_name: "optical_flow"
     model_version: -1
-    input_map { key: "images_prev" value: "image_flow_prev" }
-    input_map { key: "images_curr" value: "image_flow_curr" }
+    input_map { key: "0" value: "image_flow_prev" }
+    input_map { key: "1" value: "image_flow_curr" }
     output_map { key: "flow" value: "flow" }
   }
   step {
     model_name: "clip_encoder"
     model_version: -1
     input_map { key: "pixel_values" value: "image_clip" }
-    output_map { key: "embedding" value: "embedding" }
+    output_map { key: "image_embeds" value: "embedding" }
   }
 }
 instance_group [{ kind: KIND_GPU }]

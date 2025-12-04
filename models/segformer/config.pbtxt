@@ -7,7 +7,7 @@ input {
   dims: [3, 512, 512]
 }
 output {
-  name: "masks"
+  name: "logits"
   data_type: TYPE_FP32
   dims: [150, 512, 512]
 }

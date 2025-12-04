@@ -1,5 +1,7 @@
 models/*
 !models/README.md
+!models/*/
+!models/*/config.pbtxt
 placeholder/*
 __pycache__/
 *.pyc
